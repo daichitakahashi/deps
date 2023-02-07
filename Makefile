@@ -14,16 +14,7 @@ test-cov-visual: test coverage.out
 	go tool cover -html=coverage.out
 	@rm coverage.out
 
-test-ci:
-	@# 名前が"git.maildev.jp/{your_project_path}" で始まるパッケージのみをカバレッジ計測の対象とする
-	go test -race -coverprofile=coverage.out.tmp -coverpkg=${CI_SERVER_HOST}/${CI_PROJECT_PATH}/... ./...
-
-test-cov-ci: test-ci coverage.out
-	go run github.com/boumenot/gocover-cobertura@latest < coverage.out > coverage.xml
-	go tool cover -func=coverage.out
-	@rm coverage.out
-
 lint:
 	docker run --rm -w /go/lint -v `pwd`:/go/lint:ro -v `go env GOMODCACHE`:/go/pkg/mod:ro golangci/golangci-lint:latest golangci-lint run ./...
 
-.PHONY: test coverage.out test-cov test-cov-visual test-ci test-cov-ci lint
+.PHONY: test coverage.out test-cov test-cov-visual lint
