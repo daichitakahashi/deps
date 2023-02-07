@@ -1,0 +1,39 @@
+# see: https://golangci-lint.run/usage/configuration/
+run:
+  # Timeout for analysis, e.g. 30s, 5m.
+  # Default: 1m
+  timeout: 5m
+  # Exit code when at least one issue was found.
+  issues-exit-code: 0
+  # Include test files or not.
+  tests: true
+  # Which dirs to skip: issues from them won't be reported.
+  skip-dirs:
+    - .mod
+  # Which files to skip: they will be analyzed, but issues from them won't be reported.
+  skip-files:
+    - "^.*\\.gen\\.go$"
+    - "^.*\\.pb\\..*\\.go$"
+
+output:
+  # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate|junit-xml|github-actions
+  format: colored-line-number
+  # Print lines of code with issue.
+  print-issued-lines: true
+  # Print linter name in the end of issue text.
+  print-linter-name: true
+  # Add a prefix to the output file references.
+  path-prefix: ""
+
+linters:
+  disable-all: false
+  enable:
+    - wrapcheck
+
+linters-settings:
+  wrapcheck:
+    # https://golangci-lint.run/usage/linters/#wrapcheck
+
+# issues:
+
+# severity

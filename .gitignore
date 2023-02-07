@@ -1,0 +1,17 @@
+.vscode
+.idea
+.DS_Store
+
+# directories for local development
+.local
+.dev
+
+# directory for cache in GitLab CI
+.mod
+
+# test artifacts
+coverage.out.tmp
+coverage.out
+
+# lint artifacts
+lint.out
