@@ -1,5 +1,6 @@
 # deps
 [![Go Reference](https://pkg.go.dev/badge/github.com/daichitakahashi/deps.svg)](https://pkg.go.dev/github.com/daichitakahashi/deps)
+[![coverage](https://img.shields.io/endpoint?style=flat-square&url=https%3A%2F%2Fdaichitakahashi.github.io%2Fdeps%2Fcoverage.json)](https://daichitakahashi.github.io/deps/coverage.html)
 
 Manage lifecycle of the application's dependencies, with minimalistic API.
 

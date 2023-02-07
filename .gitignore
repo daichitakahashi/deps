@@ -6,12 +6,10 @@
 .local
 .dev
 
-# directory for cache in GitLab CI
-.mod
-
 # test artifacts
 coverage.out.tmp
 coverage.out
+.cov
 
 # lint artifacts
 lint.out
