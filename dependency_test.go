@@ -84,7 +84,7 @@ func TestRoot_Abort(t *testing.T) {
 		defer cancel()
 
 		if err := root.Abort(ctx); err != nil {
-			t.Fatal("graceful abort failed", err)
+			t.Fatalf("graceful abort failed: %s", err)
 		}
 
 		// Check if all dependencies detected root.Abort or not
@@ -117,6 +117,29 @@ func TestRoot_Abort(t *testing.T) {
 		}
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("got unexpected error: %s", err)
+		}
+	})
+
+	t.Run("Abort after Abort", func(t *testing.T) {
+		t.Parallel()
+
+		root := deps.New()
+		created := make(chan struct{})
+		go func() {
+			dep := root.Dependent()
+			defer dep.Stop()
+
+			close(created)
+
+			<-time.After(time.Millisecond)
+		}()
+		<-created
+
+		if err := root.Abort(context.Background()); err != nil {
+			t.Fatalf("graceful abort failed: %s", err)
+		}
+		if err := root.Abort(context.Background()); err == nil {
+			t.Fatal("unexpected success")
 		}
 	})
 }
@@ -168,7 +191,7 @@ func TestDependency_AbortContext(t *testing.T) {
 	defer cancel()
 
 	if err := root.Abort(ctx); err != nil {
-		t.Fatal("graceful abort failed", err)
+		t.Fatalf("graceful abort failed: %s", err)
 	}
 	m.Lock()
 	defer m.Unlock()

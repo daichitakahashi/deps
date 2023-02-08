@@ -3,6 +3,7 @@ package deps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -45,6 +46,11 @@ func wait(wg *sync.WaitGroup) <-chan struct{} {
 }
 
 func (r *Root) Abort(ctx context.Context) error {
+	select {
+	case <-r.Aborted():
+		return errors.New("already aborted")
+	default:
+	}
 	close(r.aborted)
 	r.rw.Lock()
 	r.abortCtx = ctx
