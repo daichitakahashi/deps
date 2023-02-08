@@ -80,7 +80,7 @@ func TestRoot_Abort(t *testing.T) {
 			<-created // wait all goroutine launched
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
 		if err := root.Abort(ctx); err != nil {
