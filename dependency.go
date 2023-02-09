@@ -92,19 +92,22 @@ type dependency struct {
 	aborted  <-chan struct{}
 	abortCtx *context.Context
 	rw       *sync.RWMutex
-	wg       sync.WaitGroup
-	stop     func() // notify parent
+
+	m    sync.Mutex
+	wait <-chan struct{}
+	wg   sync.WaitGroup
+	stop func() // notify parent
 }
 
 func dependent(wg *sync.WaitGroup, aborted <-chan struct{}, abortCtx *context.Context, rw *sync.RWMutex) Dependency {
 	wg.Add(1)
-
+	var once sync.Once
 	return &dependency{
 		aborted:  aborted,
 		abortCtx: abortCtx,
 		rw:       rw,
 		stop: func() {
-			wg.Done()
+			once.Do(wg.Done)
 		},
 	}
 }
@@ -125,7 +128,12 @@ func (d *dependency) AbortContext() context.Context {
 }
 
 func (d *dependency) Wait() <-chan struct{} {
-	return wait(&d.wg)
+	d.m.Lock()
+	defer d.m.Unlock()
+	if d.wait == nil {
+		d.wait = wait(&d.wg)
+	}
+	return d.wait
 }
 
 func (d *dependency) Stop() {
