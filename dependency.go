@@ -1,4 +1,4 @@
-// Package deps is intended to control dependency description
+// Package deps helps managing lifecycle of the application's dependencies, with minimalistic API.
 package deps
 
 import (
@@ -9,14 +9,35 @@ import (
 )
 
 type (
+	// Dependency is a controller of the worker depends on the parent.
+	// After receiving abort signal from the parent, wait its dependency's stop and
+	// notify the parent of its Stop.
 	Dependency interface {
+		// Aborted returns a channel that's closed when its Root aborted.
+		// After the close of Aborted channel, the worker on behalf of this controller
+		// will have to start shutdown including its dependencies.
 		Aborted() <-chan struct{}
+
+		// AbortContext returns a context given to (*Root).Abort.
+		// The worker on behalf of this controller can get the deadline of shutdown
+		// from the context, if specified.
 		AbortContext() context.Context
+
+		// Wait returns a channel that's closed when its all dependencies stopped.
+		// To shutdown gracefully, the worker on behalf of this controller have to
+		// wait the stop of its children before its Stop.
 		Wait() <-chan struct{}
+
+		// Stop marks the worker on behalf of this controller shut down, even if its
+		// any dependencies still working.
 		Stop()
+
+		// Dependent creates the controller depends on this controller.
 		Dependent() Dependency
 	}
 
+	// Root is a root controller and describe its dependencies using (*Root).Dependent.
+	// Root can send signal of shutdown to all its dependencies.
 	Root struct {
 		aborted chan struct{}
 		wg      sync.WaitGroup
@@ -26,6 +47,7 @@ type (
 	}
 )
 
+// New creates Root object.
 func New() *Root {
 	return &Root{
 		aborted: make(chan struct{}),
@@ -45,6 +67,9 @@ func wait(wg *sync.WaitGroup) <-chan struct{} {
 	return done
 }
 
+// Abort fires shutdown of the application.
+// When all dependencies stopped successfully, it returns nil.
+// The context given as argument can be accessed via (Dependency).AbortContext.
 func (r *Root) Abort(ctx context.Context) error {
 	select {
 	case <-r.Aborted():
@@ -84,6 +109,7 @@ func dependent(wg *sync.WaitGroup, aborted <-chan struct{}, abortCtx *context.Co
 	}
 }
 
+// Dependent creates the controller depends on this root.
 func (r *Root) Dependent() Dependency {
 	return dependent(&r.wg, r.aborted, &r.abortCtx, &r.rw)
 }
