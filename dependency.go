@@ -10,12 +10,12 @@ import (
 
 type (
 	// Dependency is a controller of the worker depends on the parent.
-	// After receiving abort signal from the parent, wait its dependency's stop and
+	// After receiving abort signal from the parent, wait its dependent's stop and
 	// notify the parent of its Stop.
 	Dependency interface {
 		// Aborted returns a channel that's closed when its Root aborted.
 		// After the close of Aborted channel, the worker on behalf of this controller
-		// will have to start shutdown including its dependencies.
+		// will have to start shutdown including its dependents.
 		Aborted() <-chan struct{}
 
 		// AbortContext returns a context given to (*Root).Abort.
@@ -23,21 +23,21 @@ type (
 		// from the context, if specified.
 		AbortContext() context.Context
 
-		// Wait returns a channel that's closed when its all dependencies stopped.
+		// Wait returns a channel that's closed when its all dependents stopped.
 		// To shutdown gracefully, the worker on behalf of this controller have to
 		// wait the stop of its children before its Stop.
 		Wait() <-chan struct{}
 
 		// Stop marks the worker on behalf of this controller shut down, even if its
-		// any dependencies still working.
+		// any dependents still working.
 		Stop()
 
 		// Dependent creates the controller depends on this controller.
 		Dependent() Dependency
 	}
 
-	// Root is a root controller and describe its dependencies using (*Root).Dependent.
-	// Root can send signal of shutdown to all its dependencies.
+	// Root is a root controller and describe its dependents using (*Root).Dependent.
+	// Root can send signal of shutdown to all its dependents.
 	Root struct {
 		aborted chan struct{}
 		wg      sync.WaitGroup
@@ -47,7 +47,7 @@ type (
 	}
 )
 
-// New creates Root object.
+// New creates Root controller.
 func New() *Root {
 	return &Root{
 		aborted: make(chan struct{}),
@@ -68,7 +68,7 @@ func wait(wg *sync.WaitGroup) <-chan struct{} {
 }
 
 // Abort fires shutdown of the application.
-// When all dependencies stopped successfully, it returns nil.
+// When all dependents stopped successfully, it returns nil.
 // The context given as argument can be accessed via (Dependency).AbortContext.
 func (r *Root) Abort(ctx context.Context) error {
 	select {
@@ -82,7 +82,7 @@ func (r *Root) Abort(ctx context.Context) error {
 	r.rw.Unlock()
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("failed to wait all dependencies to stop: %w", ctx.Err())
+		return fmt.Errorf("failed to wait all dependents to stop: %w", ctx.Err())
 	case <-wait(&r.wg):
 		return nil
 	}
