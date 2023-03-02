@@ -17,7 +17,7 @@ func ExampleNew() {
 	root := deps.New()
 
 	go func(dep deps.Dependency) {
-		defer dep.Stop()
+		defer dep.Stop(nil)
 		for {
 			select {
 			case <-dep.Aborted():
@@ -60,11 +60,11 @@ func TestRoot_Abort(t *testing.T) {
 			created := make(chan struct{})
 			go func() {
 				dep := root.Dependent()
-				defer dep.Stop()
+				defer dep.Stop(nil)
 
 				go func() {
 					dep := dep.Dependent()
-					defer dep.Stop()
+					defer dep.Stop(nil)
 
 					close(created)
 
@@ -100,7 +100,7 @@ func TestRoot_Abort(t *testing.T) {
 		created := make(chan struct{})
 		go func() {
 			dep := root.Dependent()
-			defer dep.Stop()
+			defer dep.Stop(nil)
 
 			close(created)
 
@@ -127,7 +127,7 @@ func TestRoot_Abort(t *testing.T) {
 		created := make(chan struct{})
 		go func() {
 			dep := root.Dependent()
-			defer dep.Stop()
+			defer dep.Stop(nil)
 
 			close(created)
 
@@ -158,11 +158,11 @@ func TestDependency_AbortContext(t *testing.T) {
 		created := make(chan struct{})
 		go func() {
 			dep := root.Dependent()
-			defer dep.Stop()
+			defer dep.Stop(nil)
 
 			go func() {
 				dep := dep.Dependent()
-				defer dep.Stop()
+				defer dep.Stop(nil)
 
 				close(created)
 
@@ -202,5 +202,67 @@ func TestDependency_AbortContext(t *testing.T) {
 		if !expectedDeadline.Equal(d) {
 			t.Fatalf("unexpected deadline detected: want %s, got %s", expectedDeadline, d)
 		}
+	}
+}
+
+func earlyStopParentDependent(t *testing.T, stop func(deps.Dependency) func(*error)) (childDependentFinished bool) {
+	t.Helper()
+
+	var (
+		root    = deps.New()
+		stopped atomic.Bool
+	)
+	go func() {
+		var (
+			dep = root.Dependent() // Dependent A
+			err error
+		)
+		defer stop(dep)(&err)
+
+		go func() {
+			dep := dep.Dependent() // Dependent B
+			defer stop(dep)(nil)
+
+			time.Sleep(time.Second * 2)
+			stopped.Store(true)
+		}()
+
+		time.Sleep(time.Millisecond * 500)
+		err = errors.New("stop early")
+		_ = err
+	}()
+
+	select {
+	case <-root.AbortRequested():
+	case <-time.After(time.Second):
+		t.Fatal("abort not requested")
+	}
+	err := root.Abort(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return stopped.Load()
+}
+
+func TestDependency_Stop(t *testing.T) {
+	t.Parallel()
+
+	childDependencyStopped := earlyStopParentDependent(t, func(dep deps.Dependency) func(*error) {
+		return dep.Stop
+	})
+	if !childDependencyStopped {
+		t.Fatal("Dependent B not stopped")
+	}
+}
+
+func TestDependency_StopImmediately(t *testing.T) {
+	t.Parallel()
+
+	childDependencyStopped := earlyStopParentDependent(t, func(dep deps.Dependency) func(*error) {
+		return dep.StopImmediately
+	})
+	if childDependencyStopped {
+		t.Fatal("Dependent B stopped unexpectedly")
 	}
 }

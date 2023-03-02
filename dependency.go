@@ -1,10 +1,11 @@
-// Package deps helps managing lifecycle of the application's dependencies, with minimalistic API.
+// Package deps helps managing lifecycle of the application's dependencies and shutting down gracefully, with minimalistic API.
 package deps
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -15,7 +16,7 @@ type (
 	Dependency interface {
 		// Aborted returns a channel that's closed when its Root aborted.
 		// After the close of Aborted channel, the worker on behalf of this controller
-		// will have to start shutdown including its dependents.
+		// will have to start shutdown process including its dependents.
 		Aborted() <-chan struct{}
 
 		// AbortContext returns a context given to (*Root).Abort.
@@ -25,12 +26,18 @@ type (
 
 		// Wait returns a channel that's closed when its all dependents stopped.
 		// To shutdown gracefully, the worker on behalf of this controller have to
-		// wait the stop of its children before its Stop.
+		// wait the stop of its children before starting its shutdown process.
 		Wait() <-chan struct{}
 
-		// Stop marks the worker on behalf of this controller shut down, even if its
+		// Stop marks the worker on behalf of this controller stopped after all dependents
+		// stopped.
+		// If abortOnError indicates error, this requests Root to abort.
+		Stop(abortOnError *error)
+
+		// StopImmediately marks the worker on behalf of this controller stopped, even if its
 		// any dependents still working.
-		Stop()
+		// If abortOnError indicates error, this requests Root to abort.
+		StopImmediately(abortOnError *error)
 
 		// Dependent creates the controller depends on this controller.
 		Dependent() Dependency
@@ -39,8 +46,10 @@ type (
 	// Root is a root controller and describe its dependents using (*Root).Dependent.
 	// Root can send signal of shutdown to all its dependents.
 	Root struct {
-		aborted chan struct{}
-		wg      sync.WaitGroup
+		abortRequested chan struct{}
+		requestAbort   func() // request abort
+		aborted        chan struct{}
+		wg             sync.WaitGroup
 
 		abortCtx context.Context
 		rw       sync.RWMutex
@@ -49,8 +58,18 @@ type (
 
 // New creates Root controller.
 func New() *Root {
+	r := make(chan struct{})
+	var once sync.Once
+	request := func() {
+		once.Do(func() {
+			log.Println("request abort")
+			close(r)
+		})
+	}
 	return &Root{
-		aborted: make(chan struct{}),
+		abortRequested: r,
+		requestAbort:   request,
+		aborted:        make(chan struct{}),
 	}
 }
 
@@ -65,6 +84,10 @@ func wait(wg *sync.WaitGroup) <-chan struct{} {
 		wg.Wait()
 	}()
 	return done
+}
+
+func (r *Root) AbortRequested() <-chan struct{} {
+	return r.abortRequested
 }
 
 // Abort fires shutdown of the application.
@@ -89,9 +112,10 @@ func (r *Root) Abort(ctx context.Context) error {
 }
 
 type dependency struct {
-	aborted  <-chan struct{}
-	abortCtx *context.Context
-	rw       *sync.RWMutex
+	requestAbort func()
+	aborted      <-chan struct{}
+	abortCtx     *context.Context
+	rw           *sync.RWMutex
 
 	m    sync.Mutex
 	wait <-chan struct{}
@@ -99,13 +123,14 @@ type dependency struct {
 	stop func() // notify parent
 }
 
-func dependent(wg *sync.WaitGroup, aborted <-chan struct{}, abortCtx *context.Context, rw *sync.RWMutex) Dependency {
+func dependent(wg *sync.WaitGroup, requestAbort func(), aborted <-chan struct{}, abortCtx *context.Context, rw *sync.RWMutex) Dependency {
 	wg.Add(1)
 	var once sync.Once
 	return &dependency{
-		aborted:  aborted,
-		abortCtx: abortCtx,
-		rw:       rw,
+		requestAbort: requestAbort,
+		aborted:      aborted,
+		abortCtx:     abortCtx,
+		rw:           rw,
 		stop: func() {
 			once.Do(wg.Done)
 		},
@@ -114,7 +139,7 @@ func dependent(wg *sync.WaitGroup, aborted <-chan struct{}, abortCtx *context.Co
 
 // Dependent creates the controller depends on this root.
 func (r *Root) Dependent() Dependency {
-	return dependent(&r.wg, r.aborted, &r.abortCtx, &r.rw)
+	return dependent(&r.wg, r.requestAbort, r.aborted, &r.abortCtx, &r.rw)
 }
 
 func (d *dependency) Aborted() <-chan struct{} {
@@ -136,10 +161,21 @@ func (d *dependency) Wait() <-chan struct{} {
 	return d.wait
 }
 
-func (d *dependency) Stop() {
+func (d *dependency) Stop(abortOnError *error) {
+	if abortOnError != nil && *abortOnError != nil {
+		d.requestAbort()
+	}
+	<-d.Wait()
+	d.stop()
+}
+
+func (d *dependency) StopImmediately(abortOnError *error) {
+	if abortOnError != nil && *abortOnError != nil {
+		d.requestAbort()
+	}
 	d.stop()
 }
 
 func (d *dependency) Dependent() Dependency {
-	return dependent(&d.wg, d.aborted, d.abortCtx, d.rw)
+	return dependent(&d.wg, d.requestAbort, d.aborted, d.abortCtx, d.rw)
 }
