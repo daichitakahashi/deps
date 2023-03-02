@@ -58,8 +58,7 @@ func TestRoot_Abort(t *testing.T) {
 		root := deps.New()
 		for i := 0; i < count; i++ {
 			created := make(chan struct{})
-			go func() {
-				dep := root.Dependent()
+			go func(dep deps.Dependency) {
 				defer dep.Stop(nil)
 
 				go func() {
@@ -76,7 +75,7 @@ func TestRoot_Abort(t *testing.T) {
 				<-dep.Wait() // wait for all dependencies stopped
 
 				atomic.AddInt32(&abortDetected, 1)
-			}()
+			}(root.Dependent())
 			<-created // wait all goroutine launched
 		}
 
@@ -98,14 +97,13 @@ func TestRoot_Abort(t *testing.T) {
 
 		root := deps.New()
 		created := make(chan struct{})
-		go func() {
-			dep := root.Dependent()
+		go func(dep deps.Dependency) {
 			defer dep.Stop(nil)
 
 			close(created)
 
 			<-time.After(time.Second)
-		}()
+		}(root.Dependent())
 		<-created
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
@@ -125,14 +123,13 @@ func TestRoot_Abort(t *testing.T) {
 
 		root := deps.New()
 		created := make(chan struct{})
-		go func() {
-			dep := root.Dependent()
+		go func(dep deps.Dependency) {
 			defer dep.Stop(nil)
 
 			close(created)
 
 			<-time.After(time.Millisecond)
-		}()
+		}(root.Dependent())
 		<-created
 
 		if err := root.Abort(context.Background()); err != nil {
@@ -156,8 +153,7 @@ func TestDependency_AbortContext(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		created := make(chan struct{})
-		go func() {
-			dep := root.Dependent()
+		go func(dep deps.Dependency) {
 			defer dep.Stop(nil)
 
 			go func() {
@@ -182,7 +178,7 @@ func TestDependency_AbortContext(t *testing.T) {
 			m.Lock()
 			defer m.Unlock()
 			detectedDeadlines = append(detectedDeadlines, deadline)
-		}()
+		}(root.Dependent())
 		<-created
 	}
 
@@ -212,25 +208,24 @@ func earlyStopParentDependent(t *testing.T, stop func(deps.Dependency) func(*err
 		root    = deps.New()
 		stopped atomic.Bool
 	)
-	go func() {
-		var (
-			dep = root.Dependent() // Dependent A
-			err error
-		)
+	go func(dep deps.Dependency) { // Dependent A
+		var err error
 		defer stop(dep)(&err)
 
-		go func() {
-			dep := dep.Dependent() // Dependent B
+		done := make(chan struct{})
+		go func(dep deps.Dependency) { // Dependent B
+			close(done)
 			defer stop(dep)(nil)
 
 			time.Sleep(time.Second * 2)
 			stopped.Store(true)
-		}()
+		}(dep.Dependent())
 
+		<-done
 		time.Sleep(time.Millisecond * 500)
 		err = errors.New("stop early")
 		_ = err
-	}()
+	}(root.Dependent())
 
 	select {
 	case <-root.AbortRequested():

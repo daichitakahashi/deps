@@ -11,9 +11,8 @@ func main() {
 	root := deps.New()
 
 	// Worker #1 (Web server)
-	go func() {
+	go func(dep deps.Dependency) {
 		var (
-			dep = root.Dependent()
 			svr http.Server
 			err error
 			e   = make(chan error, 1)
@@ -33,15 +32,14 @@ func main() {
 				log.Println("failed to shutdown server gracefully: ", shutdownErr)
 			}
 		}
-	}()
+	}(root.Dependent())
 
 	// Worker #2 (Periodic task runner or something)
-	go func() {
-		dep := root.Dependent()
+	go func(dep deps.Dependency) {
 		defer dep.Stop(nil)
 
 		// Start worker and describe shutdown flow as same as Worker #1...
-	}()
+	}(root.Dependent())
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)

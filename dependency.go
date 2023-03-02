@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 )
 
@@ -40,6 +39,9 @@ type (
 		StopImmediately(abortOnError *error)
 
 		// Dependent creates the controller depends on this controller.
+		// Dependency should be created before the statement creating the goroutine or other event
+		// to be waited for. Otherwise, a data race could occur.
+		// Dependency uses [sync.WaitGroup] internally. For detail, see [sync.WaitGroup.Add].
 		Dependent() Dependency
 	}
 
@@ -62,7 +64,6 @@ func New() *Root {
 	var once sync.Once
 	request := func() {
 		once.Do(func() {
-			log.Println("request abort")
 			close(r)
 		})
 	}
@@ -138,6 +139,9 @@ func dependent(wg *sync.WaitGroup, requestAbort func(), aborted <-chan struct{},
 }
 
 // Dependent creates the controller depends on this root.
+// Dependency should be created before the statement creating the goroutine or other event
+// to be waited for. Otherwise, a data race could occur.
+// Root uses [sync.WaitGroup] internally. For detail, see [sync.WaitGroup.Add].
 func (r *Root) Dependent() Dependency {
 	return dependent(&r.wg, r.requestAbort, r.aborted, &r.abortCtx, &r.rw)
 }
