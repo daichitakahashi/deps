@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.3](https://github.com/daichitakahashi/deps/compare/v0.0.2...v0.0.3) - 2023-03-03
+- Update: add ability to request abort from Dependent by @daichitakahashi in https://github.com/daichitakahashi/deps/pull/8
+- Update: change `Dependency` to struct from interface by @daichitakahashi in https://github.com/daichitakahashi/deps/pull/10
+
 ## [v0.0.2](https://github.com/daichitakahashi/deps/compare/v0.0.1...v0.0.2) - 2023-02-12
 - Update: fix docs by @daichitakahashi in https://github.com/daichitakahashi/deps/pull/5
 
