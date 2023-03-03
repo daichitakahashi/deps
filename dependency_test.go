@@ -16,7 +16,7 @@ import (
 func ExampleNew() {
 	root := deps.New()
 
-	go func(dep deps.Dependency) {
+	go func(dep *deps.Dependency) {
 		defer dep.Stop(nil)
 		for {
 			select {
@@ -58,7 +58,7 @@ func TestRoot_Abort(t *testing.T) {
 		root := deps.New()
 		for i := 0; i < count; i++ {
 			created := make(chan struct{})
-			go func(dep deps.Dependency) {
+			go func(dep *deps.Dependency) {
 				defer dep.Stop(nil)
 
 				go func() {
@@ -97,7 +97,7 @@ func TestRoot_Abort(t *testing.T) {
 
 		root := deps.New()
 		created := make(chan struct{})
-		go func(dep deps.Dependency) {
+		go func(dep *deps.Dependency) {
 			defer dep.Stop(nil)
 
 			close(created)
@@ -123,7 +123,7 @@ func TestRoot_Abort(t *testing.T) {
 
 		root := deps.New()
 		created := make(chan struct{})
-		go func(dep deps.Dependency) {
+		go func(dep *deps.Dependency) {
 			defer dep.Stop(nil)
 
 			close(created)
@@ -153,7 +153,7 @@ func TestDependency_AbortContext(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		created := make(chan struct{})
-		go func(dep deps.Dependency) {
+		go func(dep *deps.Dependency) {
 			defer dep.Stop(nil)
 
 			go func() {
@@ -201,19 +201,19 @@ func TestDependency_AbortContext(t *testing.T) {
 	}
 }
 
-func earlyStopParentDependent(t *testing.T, stop func(deps.Dependency) func(*error)) (childDependentFinished bool) {
+func earlyStopParentDependent(t *testing.T, stop func(*deps.Dependency) func(*error)) (childDependentFinished bool) {
 	t.Helper()
 
 	var (
 		root    = deps.New()
 		stopped atomic.Bool
 	)
-	go func(dep deps.Dependency) { // Dependent A
+	go func(dep *deps.Dependency) { // Dependent A
 		var err error
 		defer stop(dep)(&err)
 
 		done := make(chan struct{})
-		go func(dep deps.Dependency) { // Dependent B
+		go func(dep *deps.Dependency) { // Dependent B
 			close(done)
 			defer stop(dep)(nil)
 
@@ -243,7 +243,7 @@ func earlyStopParentDependent(t *testing.T, stop func(deps.Dependency) func(*err
 func TestDependency_Stop(t *testing.T) {
 	t.Parallel()
 
-	childDependencyStopped := earlyStopParentDependent(t, func(dep deps.Dependency) func(*error) {
+	childDependencyStopped := earlyStopParentDependent(t, func(dep *deps.Dependency) func(*error) {
 		return dep.Stop
 	})
 	if !childDependencyStopped {
@@ -254,7 +254,7 @@ func TestDependency_Stop(t *testing.T) {
 func TestDependency_StopImmediately(t *testing.T) {
 	t.Parallel()
 
-	childDependencyStopped := earlyStopParentDependent(t, func(dep deps.Dependency) func(*error) {
+	childDependencyStopped := earlyStopParentDependent(t, func(dep *deps.Dependency) func(*error) {
 		return dep.StopImmediately
 	})
 	if childDependencyStopped {
