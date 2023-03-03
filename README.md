@@ -11,7 +11,7 @@ func main() {
 	root := deps.New()
 
 	// Worker #1 (Web server)
-	go func(dep deps.Dependency) {
+	go func(dep *deps.Dependency) {
 		var (
 			svr http.Server
 			err error
@@ -35,7 +35,7 @@ func main() {
 	}(root.Dependent())
 
 	// Worker #2 (Periodic task runner or something)
-	go func(dep deps.Dependency) {
+	go func(dep *deps.Dependency) {
 		defer dep.Stop(nil)
 
 		// Start worker and describe shutdown flow as same as Worker #1...

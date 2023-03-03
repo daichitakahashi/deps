@@ -9,42 +9,6 @@ import (
 )
 
 type (
-	// Dependency is a controller of the worker depends on the parent.
-	// After receiving abort signal from the parent, wait its dependent's stop and
-	// notify the parent of its Stop.
-	Dependency interface {
-		// Aborted returns a channel that's closed when its Root aborted.
-		// After the close of Aborted channel, the worker on behalf of this controller
-		// will have to start shutdown process including its dependents.
-		Aborted() <-chan struct{}
-
-		// AbortContext returns a context given to (*Root).Abort.
-		// The worker on behalf of this controller can get the deadline of shutdown
-		// from the context, if specified.
-		AbortContext() context.Context
-
-		// Wait returns a channel that's closed when its all dependents stopped.
-		// To shutdown gracefully, the worker on behalf of this controller have to
-		// wait the stop of its children before starting its shutdown process.
-		Wait() <-chan struct{}
-
-		// Stop marks the worker on behalf of this controller stopped after all dependents
-		// stopped.
-		// If abortOnError indicates error, this requests Root to abort.
-		Stop(abortOnError *error)
-
-		// StopImmediately marks the worker on behalf of this controller stopped, even if its
-		// any dependents still working.
-		// If abortOnError indicates error, this requests Root to abort.
-		StopImmediately(abortOnError *error)
-
-		// Dependent creates the controller depends on this controller.
-		// Dependency should be created before the statement creating the goroutine or other event
-		// to be waited for. Otherwise, a data race could occur.
-		// Dependency uses [sync.WaitGroup] internally. For detail, see [sync.WaitGroup.Add].
-		Dependent() Dependency
-	}
-
 	// Root is a root controller and describe its dependents using (*Root).Dependent.
 	// Root can send signal of shutdown to all its dependents.
 	Root struct {
@@ -55,6 +19,21 @@ type (
 
 		abortCtx context.Context
 		rw       sync.RWMutex
+	}
+
+	// Dependency is a controller of the worker depends on the parent.
+	// After receiving abort signal from the parent, wait its dependent's stop and
+	// notify the parent of its Stop.
+	Dependency struct {
+		requestAbort func()
+		aborted      <-chan struct{}
+		abortCtx     *context.Context
+		rw           *sync.RWMutex
+
+		m    sync.Mutex
+		wait <-chan struct{}
+		wg   sync.WaitGroup
+		stop func() // notify parent
 	}
 )
 
@@ -112,22 +91,10 @@ func (r *Root) Abort(ctx context.Context) error {
 	}
 }
 
-type dependency struct {
-	requestAbort func()
-	aborted      <-chan struct{}
-	abortCtx     *context.Context
-	rw           *sync.RWMutex
-
-	m    sync.Mutex
-	wait <-chan struct{}
-	wg   sync.WaitGroup
-	stop func() // notify parent
-}
-
-func dependent(wg *sync.WaitGroup, requestAbort func(), aborted <-chan struct{}, abortCtx *context.Context, rw *sync.RWMutex) Dependency {
+func dependent(wg *sync.WaitGroup, requestAbort func(), aborted <-chan struct{}, abortCtx *context.Context, rw *sync.RWMutex) *Dependency {
 	wg.Add(1)
 	var once sync.Once
-	return &dependency{
+	return &Dependency{
 		requestAbort: requestAbort,
 		aborted:      aborted,
 		abortCtx:     abortCtx,
@@ -142,21 +109,30 @@ func dependent(wg *sync.WaitGroup, requestAbort func(), aborted <-chan struct{},
 // Dependency should be created before the statement creating the goroutine or other event
 // to be waited for. Otherwise, a data race could occur.
 // Root uses [sync.WaitGroup] internally. For detail, see [sync.WaitGroup.Add].
-func (r *Root) Dependent() Dependency {
+func (r *Root) Dependent() *Dependency {
 	return dependent(&r.wg, r.requestAbort, r.aborted, &r.abortCtx, &r.rw)
 }
 
-func (d *dependency) Aborted() <-chan struct{} {
+// Aborted returns a channel that's closed when its Root aborted.
+// After the close of Aborted channel, the worker on behalf of this controller
+// will have to start shutdown process including its dependents.
+func (d *Dependency) Aborted() <-chan struct{} {
 	return d.aborted
 }
 
-func (d *dependency) AbortContext() context.Context {
+// AbortContext returns a context given to (*Root).Abort.
+// The worker on behalf of this controller can get the deadline of shutdown
+// from the context, if specified.
+func (d *Dependency) AbortContext() context.Context {
 	d.rw.RLock()
 	defer d.rw.RUnlock()
 	return *d.abortCtx
 }
 
-func (d *dependency) Wait() <-chan struct{} {
+// Wait returns a channel that's closed when its all dependents stopped.
+// To shutdown gracefully, the worker on behalf of this controller have to
+// wait the stop of its children before starting its shutdown process.
+func (d *Dependency) Wait() <-chan struct{} {
 	d.m.Lock()
 	defer d.m.Unlock()
 	if d.wait == nil {
@@ -165,7 +141,10 @@ func (d *dependency) Wait() <-chan struct{} {
 	return d.wait
 }
 
-func (d *dependency) Stop(abortOnError *error) {
+// Stop marks the worker on behalf of this controller stopped after all dependents
+// stopped.
+// If abortOnError indicates error, this requests Root to abort.
+func (d *Dependency) Stop(abortOnError *error) {
 	if abortOnError != nil && *abortOnError != nil {
 		d.requestAbort()
 	}
@@ -173,13 +152,20 @@ func (d *dependency) Stop(abortOnError *error) {
 	d.stop()
 }
 
-func (d *dependency) StopImmediately(abortOnError *error) {
+// StopImmediately marks the worker on behalf of this controller stopped, even if its
+// any dependents still working.
+// If abortOnError indicates error, this requests Root to abort.
+func (d *Dependency) StopImmediately(abortOnError *error) {
 	if abortOnError != nil && *abortOnError != nil {
 		d.requestAbort()
 	}
 	d.stop()
 }
 
-func (d *dependency) Dependent() Dependency {
+// Dependent creates the controller depends on this controller.
+// Dependency should be created before the statement creating the goroutine or other event
+// to be waited for. Otherwise, a data race could occur.
+// Dependency uses [sync.WaitGroup] internally. For detail, see [sync.WaitGroup.Add].
+func (d *Dependency) Dependent() *Dependency {
 	return dependent(&d.wg, d.requestAbort, d.aborted, d.abortCtx, d.rw)
 }
