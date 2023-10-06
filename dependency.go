@@ -79,8 +79,8 @@ func (r *Root) Abort(ctx context.Context) error {
 		return errors.New("already aborted")
 	default:
 	}
-	close(r.aborted)
 	r.rw.Lock()
+	close(r.aborted)
 	r.abortCtx = ctx
 	r.rw.Unlock()
 	select {
